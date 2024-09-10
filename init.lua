@@ -946,6 +946,22 @@ require('lazy').setup({
 -- Prevent change command 'c' from being copied into the default yank register, and instead map it to the black hole register "_.
 vim.api.nvim_set_keymap('v', 'c', '"_c', { noremap = true, silent = true })
 vim.keymap.set('n', '<C-n>', ':NvimTreeToggle<CR>')
+-- Disable tags for markdown
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = 'markdown',
+  callback = function()
+    -- Disable tag lookup by clearing the tags option
+    vim.opt_local.tags = ''
+
+    -- Disable LSP tag-based functionality (if using LSP)
+    vim.opt_local.tagfunc = ''
+
+    -- Disable Ctrl-click behavior
+    vim.cmd 'nnoremap <buffer> <C-LeftMouse> <NOP>'
+    vim.cmd 'vnoremap <buffer> <C-LeftMouse> <NOP>'
+    vim.cmd 'inoremap <buffer> <C-LeftMouse> <NOP>'
+  end,
+})
 -- Custom settings end
 
 -- The line beneath this is called `modeline`. See `:help modeline`
