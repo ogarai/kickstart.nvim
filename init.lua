@@ -878,6 +878,25 @@ require('lazy').setup({
     config = true,
     cmd = 'Glow',
   },
+  { -- Built-in markdown support
+    'MeanderingProgrammer/render-markdown.nvim',
+    opts = {},
+    -- dependencies = { 'nvim-treesitter/nvim-treesitter', 'echasnovski/mini.nvim' }, -- if you use the mini.nvim suite
+    -- dependencies = { 'nvim-treesitter/nvim-treesitter', 'echasnovski/mini.icons' }, -- if you use standalone mini plugins
+    dependencies = { 'nvim-treesitter/nvim-treesitter', 'nvim-tree/nvim-web-devicons' }, -- if you prefer nvim-web-devicons
+  },
+  { -- Like Nerd-tree
+    'nvim-tree/nvim-tree.lua',
+    dependencies = { 'nvim-tree/nvim-web-devicons' },
+    config = function()
+      require('nvim-tree').setup()
+    end,
+  },
+  {
+    'numToStr/Comment.nvim',
+    opts = {},
+    lazy = false,
+  },
 
   -- The following two comments only work if you have downloaded the kickstart repo, not just copy pasted the
   -- init.lua. If you want these files, they are in the repository, so you can just download them and
@@ -922,6 +941,12 @@ require('lazy').setup({
     },
   },
 })
+
+-- Custom settings start
+-- Prevent change command 'c' from being copied into the default yank register, and instead map it to the black hole register "_.
+vim.api.nvim_set_keymap('v', 'c', '"_c', { noremap = true, silent = true })
+vim.keymap.set('n', '<C-n>', ':NvimTreeToggle<CR>')
+-- Custom settings end
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
