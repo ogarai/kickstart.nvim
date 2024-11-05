@@ -646,14 +646,54 @@ require('lazy').setup({
     opts = {
       notify_on_error = false,
       format_on_save = function(bufnr)
-        -- Disable "format_on_save lsp_fallback" for languages that don't
-        -- have a well standardized coding style. You can add additional
-        -- languages here or re-enable it for the disabled ones.
-        local disable_filetypes = { c = true, cpp = true }
-        return {
-          timeout_ms = 500,
-          lsp_fallback = not disable_filetypes[vim.bo[bufnr].filetype],
-        }
+        -- Only format git modifications on save
+        local ignore_filetypes = { 'lua' }
+        if vim.tbl_contains(ignore_filetypes, vim.bo.filetype) then
+          vim.notify('range formatting for ' .. vim.bo.filetype .. ' not working properly.')
+          return
+        end
+
+        local hunks = require('gitsigns').get_hunks()
+        if hunks == nil then
+          return
+        end
+
+        local format = require('conform').format
+
+        local function format_range()
+          if next(hunks) == nil then
+            vim.notify('done formatting git hunks', 'info', { title = 'formatting' })
+            return
+          end
+          local hunk = nil
+          while next(hunks) ~= nil and (hunk == nil or hunk.type == 'delete') do
+            hunk = table.remove(hunks)
+          end
+
+          if hunk ~= nil and hunk.type ~= 'delete' then
+            local start = hunk.added.start
+            local last = start + hunk.added.count
+            -- nvim_buf_get_lines uses zero-based indexing -> subtract from last
+            local last_hunk_line = vim.api.nvim_buf_get_lines(0, last - 2, last - 1, true)[1]
+            local range = { start = { start, 0 }, ['end'] = { last - 1, last_hunk_line:len() } }
+            format({ range = range, async = true, lsp_fallback = true }, function()
+              vim.defer_fn(function()
+                format_range()
+              end, 1)
+            end)
+          end
+        end
+
+        format_range()
+        -- Disable default config
+        -- -- Disable "format_on_save lsp_fallback" for languages that don't
+        -- -- have a well standardized coding style. You can add additional
+        -- -- languages here or re-enable it for the disabled ones.
+        -- local disable_filetypes = { c = true, cpp = true }
+        -- return {
+        --   timeout_ms = 500,
+        --   lsp_fallback = not disable_filetypes[vim.bo[bufnr].filetype],
+        -- }
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
@@ -963,7 +1003,10 @@ require('lazy').setup({
 -- Custom settings start
 -- Prevent change command 'c' from being copied into the default yank register, and instead map it to the black hole register "_.
 vim.api.nvim_set_keymap('v', 'c', '"_c', { noremap = true, silent = true })
+-- Ctrl+n to show nvim-tree
 vim.keymap.set('n', '<C-n>', ':NvimTreeToggle<CR>')
+-- Ctrl+f to find file in nvim-tree
+vim.keymap.set('n', '<C-f>', ':NvimTreeFindFile<CR>')
 -- Disable tags for markdown
 vim.api.nvim_create_autocmd('FileType', {
   pattern = 'markdown',
@@ -980,6 +1023,47 @@ vim.api.nvim_create_autocmd('FileType', {
     vim.cmd 'inoremap <buffer> <C-LeftMouse> <NOP>'
   end,
 })
+-- Custom command to format modifications (if format-on-save doesn't work properly)
+vim.api.nvim_create_user_command('DiffFormat', function()
+  local ignore_filetypes = { 'lua' }
+  if vim.tbl_contains(ignore_filetypes, vim.bo.filetype) then
+    vim.notify('range formatting for ' .. vim.bo.filetype .. ' not working properly.')
+    return
+  end
+
+  local hunks = require('gitsigns').get_hunks()
+  if hunks == nil then
+    return
+  end
+
+  local format = require('conform').format
+
+  local function format_range()
+    if next(hunks) == nil then
+      vim.notify('done formatting git hunks', 'info', { title = 'formatting' })
+      return
+    end
+    local hunk = nil
+    while next(hunks) ~= nil and (hunk == nil or hunk.type == 'delete') do
+      hunk = table.remove(hunks)
+    end
+
+    if hunk ~= nil and hunk.type ~= 'delete' then
+      local start = hunk.added.start
+      local last = start + hunk.added.count
+      -- nvim_buf_get_lines uses zero-based indexing -> subtract from last
+      local last_hunk_line = vim.api.nvim_buf_get_lines(0, last - 2, last - 1, true)[1]
+      local range = { start = { start, 0 }, ['end'] = { last - 1, last_hunk_line:len() } }
+      format({ range = range, async = true, lsp_fallback = true }, function()
+        vim.defer_fn(function()
+          format_range()
+        end, 1)
+      end)
+    end
+  end
+
+  format_range()
+end, { desc = 'Format changed lines' })
 -- Custom settings end
 
 -- The line beneath this is called `modeline`. See `:help modeline`
