@@ -1023,6 +1023,8 @@ require('lazy').setup({
 })
 
 -- Custom settings start
+-- Ensure splits are vertical by default
+vim.opt.diffopt:append("vertical")
 -- Prevent change command 'c' from being copied into the default yank register, and instead map it to the black hole register "_.
 vim.api.nvim_set_keymap('v', 'c', '"_c', { noremap = true, silent = true })
 -- Ctrl+n to show nvim-tree
