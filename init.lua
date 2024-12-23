@@ -973,7 +973,12 @@ require('lazy').setup({
     opts = {},
     config = function()
       require('image').setup({
-        processor = "magick_cli"
+        processor = "magick_cli",
+        integrations = {
+          markdown = {
+            enabled = false, -- disable in markdown to avoid freeze
+          },
+        },
       })
     end,
   },
