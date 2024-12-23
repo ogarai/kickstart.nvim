@@ -596,6 +596,24 @@ require('lazy').setup({
             },
           },
         },
+        ltex = {
+          filetypes = { 'markdown', 'text', 'tex', 'gitcommit' },
+          flags = { debounce_text_changes = 300 },
+          settings = {
+            ltex = {
+              enabled = { "latex", "tex", "bib", "markdown" },
+              language = "en-US", -- or your preferred language
+              diagnosticSeverity = "info",
+              checkFrequency = "save",
+              additionalRules = {
+                enablePickyRules = false, -- Enable or disable picky rules
+              },
+              -- disabledRules = {
+              --   ["en-US"] = { "MORFOLOGIK_RULE_EN_US" }, -- Disable specific rules
+              -- },
+            },
+          },
+        },
       }
 
       -- Ensure the servers and tools above are installed
@@ -626,6 +644,16 @@ require('lazy').setup({
           end,
         },
       }
+
+      require("lspconfig").ltex.setup({
+        on_attach = function(_, bufnr)
+          -- your other on_attach code
+          -- for example, set keymaps here, like
+          -- vim.keymap.set({ 'n', 'v' }, '<leader>ca', vim.lsp.buf.code_action, opts)
+          -- (see below code block for more details)
+          require("ltex-utils").on_attach(bufnr)
+        end,
+      })
     end,
   },
 
@@ -998,7 +1026,20 @@ require('lazy').setup({
       direction = "horizontal",
       shade_terminals = true,
     }
-  }
+  },
+  {
+    "jhofscheier/ltex-utils.nvim",
+    dependencies = {
+      "neovim/nvim-lspconfig",
+      "nvim-telescope/telescope.nvim",
+      -- "nvim-telescope/telescope-fzf-native.nvim", -- optional
+    },
+    opts = {
+      dictionary = {
+        use_vim_dict = true, -- Use Vim's internal dictionary
+      },
+    },
+  },
 
 
   -- The following two comments only work if you have downloaded the kickstart repo, not just copy pasted the
