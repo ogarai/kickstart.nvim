@@ -976,7 +976,15 @@ require('lazy').setup({
         processor = "magick_cli",
         integrations = {
           markdown = {
-            enabled = false, -- disable in markdown to avoid freeze
+            resolve_image_path = function(document_path, image_path, fallback)
+              -- document_path is the path to the file that contains the image
+              -- image_path is the potentially relative path to the image. for
+              -- markdown it's `![](this text)`
+
+              -- you can call the fallback function to get the default behavior
+              -- disable gif to avoid freeze
+              return image_path:match('.gif$') and image_path or fallback(document_path, image_path)
+            end,
           },
         },
       })
