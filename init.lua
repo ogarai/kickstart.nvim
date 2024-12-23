@@ -937,7 +937,7 @@ require('lazy').setup({
   {
     'iamcco/markdown-preview.nvim',
     cmd = { 'MarkdownPreviewToggle', 'MarkdownPreview', 'MarkdownPreviewStop' },
-    build = 'cd app && npm install',
+    build = 'cd app && npm install && git restore .',
     init = function()
       vim.g.mkdp_filetypes = { 'markdown' }
     end,
@@ -977,6 +977,16 @@ require('lazy').setup({
       })
     end,
   },
+  {'akinsho/toggleterm.nvim',
+    version = "*",
+    opts = {
+      size = 10,
+      open_mapping = [[<C-`>]],
+      direction = "horizontal",
+      shade_terminals = true,
+    }
+  }
+
 
   -- The following two comments only work if you have downloaded the kickstart repo, not just copy pasted the
   -- init.lua. If you want these files, they are in the repository, so you can just download them and
