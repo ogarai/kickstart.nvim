@@ -195,12 +195,12 @@ vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper win
 
 -- Highlight when yanking (copying) text
 --  Try it with `yap` in normal mode
---  See `:help vim.highlight.on_yank()`
+--  See `:help vim.hl.on_yank()`
 vim.api.nvim_create_autocmd('TextYankPost', {
   desc = 'Highlight when yanking (copying) text',
   group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
   callback = function()
-    vim.highlight.on_yank()
+    vim.hl.on_yank()
   end,
 })
 
@@ -427,7 +427,7 @@ require('lazy').setup({
 
       -- Useful status updates for LSP.
       -- NOTE: `opts = {}` is the same as calling `require('fidget').setup({})`
-      { 'j-hui/fidget.nvim', opts = {} },
+      { 'j-hui/fidget.nvim', opts = { notification = { window = { avoid = { 'NvimTree' } } } } },
 
       -- Allows extra capabilities provided by nvim-cmp
       'hrsh7th/cmp-nvim-lsp',
@@ -517,7 +517,7 @@ require('lazy').setup({
           --
           -- When you move your cursor, the highlights will be cleared (the second autocommand).
           local client = vim.lsp.get_client_by_id(event.data.client_id)
-          if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_documentHighlight) then
+          if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_documentHighlight) then
             local highlight_augroup = vim.api.nvim_create_augroup('kickstart-lsp-highlight', { clear = false })
             vim.api.nvim_create_autocmd({ 'CursorHold', 'CursorHoldI' }, {
               buffer = event.buf,
@@ -544,7 +544,7 @@ require('lazy').setup({
           -- code, if the language server you are using supports them
           --
           -- This may be unwanted, since they displace some of your code
-          if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
+          if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
             map('<leader>th', function()
               vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf })
             end, '[T]oggle Inlay [H]ints')
@@ -597,11 +597,18 @@ require('lazy').setup({
           },
         },
         ltex = {
+          on_attach = function(_, bufnr)
+            require("ltex-utils").on_attach(bufnr)
+          end,
+          -- ltex-ls parses a large grammar.xml that exceeds the JDK default XML
+          -- entity size limit (100,000). Raising the limit via JAVA_OPTS fixes
+          -- the "Could not activate rules" RuntimeException on startup.
+          cmd_env = { JAVA_OPTS = '-Djdk.xml.totalEntitySizeLimit=0' },
           filetypes = { 'markdown', 'text', 'tex', 'gitcommit' },
           flags = { debounce_text_changes = 300 },
           settings = {
             ltex = {
-              enabled = { "latex", "tex", "bib", "markdown" },
+              enabled = {},
               language = "en-US", -- or your preferred language
               diagnosticSeverity = "info",
               checkFrequency = "save",
@@ -632,28 +639,14 @@ require('lazy').setup({
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
-      require('mason-lspconfig').setup {
-        handlers = {
-          function(server_name)
-            local server = servers[server_name] or {}
-            -- This handles overriding only values explicitly passed
-            -- by the server configuration above. Useful when disabling
-            -- certain features of an LSP (for example, turning off formatting for tsserver)
-            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-            require('lspconfig')[server_name].setup(server)
-          end,
-        },
-      }
-
-      require("lspconfig").ltex.setup({
-        on_attach = function(_, bufnr)
-          -- your other on_attach code
-          -- for example, set keymaps here, like
-          -- vim.keymap.set({ 'n', 'v' }, '<leader>ca', vim.lsp.buf.code_action, opts)
-          -- (see below code block for more details)
-          require("ltex-utils").on_attach(bufnr)
-        end,
-      })
+      -- Use the new vim.lsp.config API (nvim 0.11+) instead of the deprecated lspconfig framework.
+      -- Apply capabilities globally, then configure each server individually.
+      vim.lsp.config('*', { capabilities = capabilities })
+      for server_name, server_config in pairs(servers) do
+        vim.lsp.config(server_name, server_config)
+      end
+      -- mason-lspconfig's automatic_enable calls vim.lsp.enable() for each Mason-installed server.
+      require('mason-lspconfig').setup()
     end,
   },
 
@@ -947,6 +940,22 @@ require('lazy').setup({
       ---@diagnostic disable-next-line: missing-fields
       require('nvim-treesitter.configs').setup(opts)
 
+      -- Fix for nvim 0.12.x: TSNode:range() can be nil for stale/invalid nodes,
+      -- causing "attempt to call method 'range' (a nil value)" in treesitter injections.
+      -- Re-register the directive with pcall protection around get_node_text.
+      local non_filetype_aliases = {
+        ex = 'elixir', pl = 'perl', sh = 'bash', uxn = 'uxntal', ts = 'typescript',
+      }
+      vim.treesitter.query.add_directive('set-lang-from-info-string!', function(match, _, bufnr, pred, metadata)
+        local capture_id = pred[2]
+        local node = match[capture_id]
+        if not node then return end
+        local ok, text = pcall(vim.treesitter.get_node_text, node, bufnr)
+        if not ok or not text then return end
+        local lang = vim.filetype.match { filename = 'a.' .. text:lower() }
+        metadata['injection.language'] = lang or non_filetype_aliases[text:lower()] or text:lower()
+      end, { force = true, all = false })
+
       -- There are additional nvim-treesitter modules that you can use to interact
       -- with nvim-treesitter. You should go explore a few and see what interests you:
       --
@@ -962,6 +971,7 @@ require('lazy').setup({
   },
   { -- Built-in markdown support
     'MeanderingProgrammer/render-markdown.nvim',
+    ft = { 'markdown' },
     opts = {},
     -- dependencies = { 'nvim-treesitter/nvim-treesitter', 'echasnovski/mini.nvim' }, -- if you use the mini.nvim suite
     -- dependencies = { 'nvim-treesitter/nvim-treesitter', 'echasnovski/mini.icons' }, -- if you use standalone mini plugins
@@ -1043,6 +1053,7 @@ require('lazy').setup({
       -- "nvim-telescope/telescope-fzf-native.nvim", -- optional
     },
     opts = {
+      backend = "ltex", -- match the server name used in vim.lsp.config (default is "ltex_plus")
       dictionary = {
         use_vim_dict = true, -- Use Vim's internal dictionary
       },
@@ -1073,6 +1084,7 @@ require('lazy').setup({
   --    For additional information, see `:help lazy.nvim-lazy.nvim-structuring-your-plugins`
   -- { import = 'custom.plugins' },
 }, {
+  rocks = { enabled = false }, -- luarocks/hererocks not installed on this system
   ui = {
     -- If you are using a Nerd Font: set icons to an empty table which will use the
     -- default lazy.nvim defined Nerd Font icons, otherwise define a unicode icons table
