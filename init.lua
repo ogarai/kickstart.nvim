@@ -702,7 +702,12 @@ require('lazy').setup({
             local start = hunk.added.start
             local last = start + hunk.added.count
             -- nvim_buf_get_lines uses zero-based indexing -> subtract from last
-            local last_hunk_line = vim.api.nvim_buf_get_lines(0, last - 2, last - 1, true)[1]
+            local success, last_hunk_line = pcall(function()
+              return vim.api.nvim_buf_get_lines(0, last - 2, last - 1, true)[1]
+            end)
+            if not success then
+              return
+            end
             local range = { start = { start, 0 }, ['end'] = { last - 1, last_hunk_line:len() } }
             format({ range = range, async = true, lsp_fallback = true }, function()
               vim.defer_fn(function()
@@ -995,32 +1000,32 @@ require('lazy').setup({
       require('kitty-scrollback').setup()
     end,
   },
-  {
-    "3rd/image.nvim",
-    enabled = function()
-      return not vim.g.neovide
-    end,
-    build = false, -- so that it doesn't build the rock https://github.com/3rd/image.nvim/issues/91#issuecomment-2453430239
-    opts = {},
-    config = function()
-      require('image').setup({
-        processor = "magick_cli",
-        integrations = {
-          markdown = {
-            resolve_image_path = function(document_path, image_path, fallback)
-              -- document_path is the path to the file that contains the image
-              -- image_path is the potentially relative path to the image. for
-              -- markdown it's `![](this text)`
-
-              -- you can call the fallback function to get the default behavior
-              -- disable gif to avoid freeze
-              return image_path:match('.gif$') and image_path or fallback(document_path, image_path)
-            end,
-          },
-        },
-      })
-    end,
-  },
+  -- {
+  --   "3rd/image.nvim",
+  --   enabled = function()
+  --     return not vim.g.neovide
+  --   end,
+  --   build = false, -- so that it doesn't build the rock https://github.com/3rd/image.nvim/issues/91#issuecomment-2453430239
+  --   opts = {},
+  --   config = function()
+  --     require('image').setup({
+  --       processor = "magick_cli",
+  --       integrations = {
+  --         markdown = {
+  --           resolve_image_path = function(document_path, image_path, fallback)
+  --             -- document_path is the path to the file that contains the image
+  --             -- image_path is the potentially relative path to the image. for
+  --             -- markdown it's `![](this text)`
+  --
+  --             -- you can call the fallback function to get the default behavior
+  --             -- disable gif to avoid freeze
+  --             return image_path:match('.gif$') and image_path or fallback(document_path, image_path)
+  --           end,
+  --         },
+  --       },
+  --     })
+  --   end,
+  -- },
   {'akinsho/toggleterm.nvim',
     version = "*",
     opts = {
@@ -1143,7 +1148,12 @@ vim.api.nvim_create_user_command('DiffFormat', function()
       local start = hunk.added.start
       local last = start + hunk.added.count
       -- nvim_buf_get_lines uses zero-based indexing -> subtract from last
-      local last_hunk_line = vim.api.nvim_buf_get_lines(0, last - 2, last - 1, true)[1]
+      local success, last_hunk_line = pcall(function()
+        return vim.api.nvim_buf_get_lines(0, last - 2, last - 1, true)[1]
+      end)
+      if not success then
+        return
+      end
       local range = { start = { start, 0 }, ['end'] = { last - 1, last_hunk_line:len() } }
       format({ range = range, async = true, lsp_fallback = true }, function()
         vim.defer_fn(function()
