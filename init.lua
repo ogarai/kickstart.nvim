@@ -1052,12 +1052,88 @@ require('lazy').setup({
       "nvim-telescope/telescope.nvim",
       -- "nvim-telescope/telescope-fzf-native.nvim", -- optional
     },
-    opts = {
-      backend = "ltex", -- match the server name used in vim.lsp.config (default is "ltex_plus")
-      dictionary = {
-        use_vim_dict = true, -- Use Vim's internal dictionary
-      },
-    },
+    config = function()
+      local opts = {
+        backend = "ltex", -- match the server name used in vim.lsp.config (default is "ltex_plus")
+        dictionary = {
+          use_vim_dict = true, -- Use Vim's internal dictionary
+        },
+      }
+      require("ltex-utils").setup(opts)
+
+      -- Redirect per-file ltex JSON settings to a central state directory
+      -- instead of writing *_md_ltex.json files next to source files.
+      local actions = require("ltex-utils.actions")
+      local ltex_lsp = require("ltex-utils.ltex_lsp")
+      local settings_io = require("ltex-utils.settings_io")
+      local table_utils = require("ltex-utils.table_utils")
+      local Config = require("ltex-utils.config")
+      local state_dir = vim.fn.stdpath("state") .. "/ltex-utils/"
+      vim.fn.mkdir(state_dir, "p")
+
+      local function central_ltex_filename(abs_path)
+        local safe = abs_path:gsub("[/\\]", "%%"):gsub("^%%*", "")
+        return state_dir .. safe .. "_ltex.json"
+      end
+
+      actions.write_ltex_to_file = function(bufnr)
+        bufnr = bufnr or vim.api.nvim_get_current_buf()
+        local client = ltex_lsp.get_ltex(bufnr)
+        if not client then return end
+        local settings = client.config.settings.ltex
+        if not settings then return end
+
+        local langs
+        if Config.dictionary.use_vim_dict then
+          if settings.dictionary then langs = vim.tbl_keys(settings.dictionary) end
+        else
+          if settings.dictionary then
+            settings_io.ensure_folder_exists(Config.dictionary.path)
+            langs = settings_io.update_dictionary_files(settings.dictionary)
+          end
+        end
+
+        local settings_to_save = {}
+        for _, cfg in ipairs({ "hiddenFalsePositives", "disabledRules" }) do
+          if settings[cfg] then
+            settings_to_save[cfg] = settings[cfg]
+            langs = table_utils.merge_lists_unique(langs, vim.tbl_keys(settings[cfg]))
+          end
+        end
+        if settings.language then
+          langs = table_utils.merge_lists_unique(langs, { settings.language })
+        end
+        settings_to_save.langs = langs or nil
+
+        local buf_filename = vim.api.nvim_buf_get_name(bufnr)
+        settings_io.write(central_ltex_filename(buf_filename), vim.json.encode(settings_to_save))
+      end
+
+      actions.load_ltex_from_file = function()
+        local bufnr = vim.api.nvim_get_current_buf()
+        local client = ltex_lsp.get_ltex(bufnr)
+        if not client then return false, "No active ltex client found" end
+
+        local saved_settings, err = settings_io.read_settings(
+          central_ltex_filename(vim.api.nvim_buf_get_name(bufnr))
+        )
+        if not saved_settings then return false, err end
+
+        local client_settings = client.config.settings.ltex
+        client_settings.hiddenFalsePositives = saved_settings.hiddenFalsePositives or nil
+        client_settings.disabledRules = saved_settings.disabledRules or nil
+
+        if saved_settings.langs then
+          if not client_settings.dictionary and #saved_settings.langs > 0 then
+            client_settings.dictionary = {}
+          end
+          client_settings.dictionary = settings_io.load_dictionaries(saved_settings.langs)
+        end
+
+        client:notify("workspace/didChangeConfiguration", client.config.settings)
+        return true, nil
+      end
+    end,
   },
 
 
