@@ -955,21 +955,77 @@ require('lazy').setup({
       ---@diagnostic disable-next-line: missing-fields
       require('nvim-treesitter.configs').setup(opts)
 
-      -- Fix for nvim 0.12.x: TSNode:range() can be nil for stale/invalid nodes,
-      -- causing "attempt to call method 'range' (a nil value)" in treesitter injections.
-      -- Re-register the directive with pcall protection around get_node_text.
+      -- Fix for nvim 0.12: the frozen nvim-treesitter master branch registers its
+      -- query predicates/directives with `all = false`, which 0.12 no longer honours.
+      -- Handlers now always get a list of nodes per capture, so calling node methods
+      -- on it fails with "attempt to call method 'range' (a nil value)" (e.g. the
+      -- `downcase!` directive in bash heredoc injections). Re-register them here,
+      -- taking the last node of each capture.
+      local tsq = vim.treesitter.query
+      local reg = { force = true }
+      local function node_of(match, id)
+        local n = match[id]
+        if type(n) == 'table' then return n[#n] end
+        return n
+      end
       local non_filetype_aliases = {
         ex = 'elixir', pl = 'perl', sh = 'bash', uxn = 'uxntal', ts = 'typescript',
       }
-      vim.treesitter.query.add_directive('set-lang-from-info-string!', function(match, _, bufnr, pred, metadata)
-        local capture_id = pred[2]
-        local node = match[capture_id]
+      local html_script_types = {
+        importmap = 'json',
+        module = 'javascript',
+        ['application/ecmascript'] = 'javascript',
+        ['text/ecmascript'] = 'javascript',
+      }
+
+      tsq.add_predicate('nth?', function(match, _, _, pred)
+        local node = node_of(match, pred[2])
+        local n = tonumber(pred[3])
+        local parent = node and node:parent()
+        if parent and parent:named_child_count() > n then
+          return parent:named_child(n) == node
+        end
+        return false
+      end, reg)
+
+      tsq.add_predicate('is?', function(match, _, bufnr, pred)
+        local node = node_of(match, pred[2])
+        if not node then return true end
+        local _, _, kind = require('nvim-treesitter.locals').find_definition(node, bufnr)
+        return vim.tbl_contains({ unpack(pred, 3) }, kind)
+      end, reg)
+
+      tsq.add_predicate('kind-eq?', function(match, _, _, pred)
+        local node = node_of(match, pred[2])
+        if not node then return true end
+        return vim.tbl_contains({ unpack(pred, 3) }, node:type())
+      end, reg)
+
+      tsq.add_directive('set-lang-from-mimetype!', function(match, _, bufnr, pred, metadata)
+        local node = node_of(match, pred[2])
         if not node then return end
-        local ok, text = pcall(vim.treesitter.get_node_text, node, bufnr)
-        if not ok or not text then return end
-        local lang = vim.filetype.match { filename = 'a.' .. text:lower() }
-        metadata['injection.language'] = lang or non_filetype_aliases[text:lower()] or text:lower()
-      end, { force = true, all = false })
+        local value = vim.treesitter.get_node_text(node, bufnr)
+        local parts = vim.split(value, '/', {})
+        metadata['injection.language'] = html_script_types[value] or parts[#parts]
+      end, reg)
+
+      tsq.add_directive('set-lang-from-info-string!', function(match, _, bufnr, pred, metadata)
+        local node = node_of(match, pred[2])
+        if not node then return end
+        local alias = vim.treesitter.get_node_text(node, bufnr):lower()
+        metadata['injection.language'] = vim.filetype.match { filename = 'a.' .. alias }
+          or non_filetype_aliases[alias]
+          or alias
+      end, reg)
+
+      tsq.add_directive('downcase!', function(match, _, bufnr, pred, metadata)
+        local id = pred[2]
+        local node = node_of(match, id)
+        if not node then return end
+        local text = vim.treesitter.get_node_text(node, bufnr, { metadata = metadata[id] }) or ''
+        metadata[id] = metadata[id] or {}
+        metadata[id].text = text:lower()
+      end, reg)
 
       -- There are additional nvim-treesitter modules that you can use to interact
       -- with nvim-treesitter. You should go explore a few and see what interests you:
