@@ -569,7 +569,22 @@ require('lazy').setup({
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
-        clangd = {},
+        clangd = {
+          -- Prefer the clangd that a Chromium-based checkout bundles: it matches the
+          -- checkout's compiler flags and index format. Fall back to Mason's clangd.
+          cmd = function(dispatchers, config)
+            -- Cap indexing workers: each one parsing a Chromium TU can take 1-2 GB of RAM.
+            local cmd = { 'clangd', '--background-index', '-j=4' }
+            local root = config.root_dir
+            if root then
+              local bundled = root .. '/third_party/llvm-build/Release+Asserts/bin/clangd'
+              if vim.uv.fs_stat(bundled) then
+                cmd[1] = bundled
+              end
+            end
+            return vim.lsp.rpc.start(cmd, dispatchers, { cwd = root })
+          end,
+        },
         -- gopls = {},
         -- pyright = {},
         -- rust_analyzer = {},
